@@ -10,8 +10,8 @@ const versionSchema = new mongoose.Schema({
     description: { type: String },
     status: { type: String },
     tags: [String],
-    content: { type: String }, // For text-based documents
-    file: { type: String } // For file-based documents
+    content: { type: String },
+    file: { type: String }
   },
   previousVersion: { type: Number },
   changeSummary: { type: String }
@@ -20,17 +20,25 @@ const versionSchema = new mongoose.Schema({
 const approvalSchema = new mongoose.Schema({
   approver: { type: String, required: true },
   role: { type: String, required: true },
-  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+  status: {
+    type: String,
+    enum: ['pending', 'approved', 'rejected'],
+    default: 'pending'
+  },
   comment: { type: String },
   timestamp: { type: Date, default: Date.now },
-  signature: { type: String } // Digital signature hash
+  signature: { type: String }
 });
 
 const shareableLinkSchema = new mongoose.Schema({
-  token: { type: String, required: true, unique: true },
-  accessLevel: { type: String, enum: ['view', 'download'], default: 'view' },
+  token: { type: String, unique: true, sparse: true }, 
+  accessLevel: {
+    type: String,
+    enum: ['view', 'download'],
+    default: 'view'
+  },
   expiresAt: { type: Date },
-  createdBy: { type: String, required: true },
+  createdBy: { type: String },
   createdAt: { type: Date, default: Date.now },
   isActive: { type: Boolean, default: true }
 });
@@ -44,7 +52,7 @@ const documentSchema = new mongoose.Schema({
   file: String,
   status: { type: String, default: 'active' },
   logs: [String],
-  tags: [String], // Dynamic tagging system
+  tags: [String],
   currentVersion: { type: Number, default: 1 },
   versions: [versionSchema],
   approvals: [approvalSchema],
@@ -62,17 +70,20 @@ const documentSchema = new mongoose.Schema({
   lastModifiedBy: { type: String }
 });
 
-// Pre-save middleware to handle versioning
-documentSchema.pre('save', function(next) {
-  if (this.isModified('title') || this.isModified('description') || 
-      this.isModified('category') || this.isModified('status') || 
-      this.isModified('tags') || this.isModified('file')) {
-    
+// Version tracking middleware
+documentSchema.pre('save', function (next) {
+  if (
+    this.isModified('title') ||
+    this.isModified('description') ||
+    this.isModified('category') ||
+    this.isModified('status') ||
+    this.isModified('tags') ||
+    this.isModified('file')
+  ) {
     this.lastModified = new Date();
-    this.lastModifiedBy = this.uploadedBy; // This should be updated with actual current user
-    
-    // Create new version if this is an update
-    if (this.versions.length > 0) {
+    this.lastModifiedBy = this.uploadedBy;
+
+    if (this.versions.length > 0 && !this.isNew) {
       const newVersion = {
         version: this.currentVersion + 1,
         date: new Date(),
@@ -88,7 +99,7 @@ documentSchema.pre('save', function(next) {
         previousVersion: this.currentVersion,
         changeSummary: `Updated by ${this.lastModifiedBy}`
       };
-      
+
       this.versions.push(newVersion);
       this.currentVersion = newVersion.version;
     }
@@ -96,4 +107,4 @@ documentSchema.pre('save', function(next) {
   next();
 });
 
-module.exports = mongoose.model('Document', documentSchema); 
+module.exports = mongoose.model('Document', documentSchema);

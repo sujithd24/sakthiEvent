@@ -4,15 +4,33 @@ const AuditLog = require('../models/AuditLog');
 // Create a document
 exports.createDocument = async (req, res) => {
   try {
-    const { title, category, description, uploadedBy, file, status, logs, tags } = req.body;
-    
+    const { title, category, description, uploadedBy, file, status, logs, tags, shareableLinks } = req.body;
+
+    console.log("Incoming request data:", req.body);
+
+    // Validate required fields
     if (!title || !category || !uploadedBy) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Title, category, and uploadedBy are required' 
+      return res.status(400).json({
+        success: false,
+        error: 'Title, category, and uploadedBy are required'
       });
     }
 
+    // Prepare shareableLinks safely (remove null tokens)
+    let safeShareableLinks = [];
+    if (Array.isArray(shareableLinks)) {
+      safeShareableLinks = shareableLinks
+        .filter(link => link && link.token) // keep only ones with valid token
+        .map(link => ({
+          token: link.token,
+          accessLevel: link.accessLevel || 'view',
+          expiresAt: link.expiresAt || null,
+          createdBy: uploadedBy,
+          isActive: link.isActive ?? true
+        }));
+    }
+
+    // Create the document
     const document = new Document({
       title,
       category,
@@ -22,10 +40,11 @@ exports.createDocument = async (req, res) => {
       status: status || 'active',
       logs: Array.isArray(logs) ? logs : (logs ? [logs] : []),
       tags: Array.isArray(tags) ? tags : (tags ? [tags] : []),
+      currentVersion: 1,
       versions: [
-        { 
-          version: 1, 
-          date: new Date(), 
+        {
+          version: 1,
+          date: new Date(),
           by: uploadedBy,
           changes: {
             title,
@@ -37,10 +56,13 @@ exports.createDocument = async (req, res) => {
           },
           changeSummary: 'Initial version'
         }
-      ]
+      ],
+      shareableLinks: safeShareableLinks
     });
 
+    console.log("Saving document to MongoDB...");
     await document.save();
+    console.log("Document saved successfully with ID:", document._id);
 
     // Create audit log
     await new AuditLog({
@@ -50,14 +72,24 @@ exports.createDocument = async (req, res) => {
       status: document.status
     }).save();
 
-    res.status(201).json({ 
-      success: true, 
-      document 
+    console.log("Audit log created successfully.");
+
+    res.status(201).json({
+      success: true,
+      document
     });
+
   } catch (err) {
-    res.status(400).json({ 
-      success: false, 
-      error: err.message 
+    console.error("Error creating document:", err);
+    if (err.name === 'ValidationError') {
+      Object.keys(err.errors).forEach(field => {
+        console.error(`Validation error in "${field}":`, err.errors[field].message);
+      });
+    }
+    res.status(400).json({
+      success: false,
+      error: err.message,
+      details: err.errors || {}
     });
   }
 };

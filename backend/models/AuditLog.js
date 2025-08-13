@@ -11,7 +11,7 @@ const auditLogSchema = new mongoose.Schema({
   actionType: { 
     type: String, 
     enum: ['create', 'update', 'delete', 'view', 'download', 'approve', 'reject', 'sign', 'share', 'version', 'tag', 'status_change'],
-    required: true 
+    
   },
   details: {
     field: String, // Which field was changed
